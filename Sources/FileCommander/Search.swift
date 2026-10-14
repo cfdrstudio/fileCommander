@@ -97,10 +97,15 @@ final class SearchSession: Identifiable {
     private(set) var hits: [SearchHit] = []
     private(set) var running = false
     private(set) var scanned = 0
+    /// More matches exist than `maxHits`; only the first ones are listed.
+    private(set) var truncated = false
     @ObservationIgnored private var control = JobControl()
     @ObservationIgnored private var query: NSMetadataQuery?
-    @ObservationIgnored private var observer: NSObjectProtocol?
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var generation = 0
+
+    /// A broad name in a big folder can match ~1M files; past this the list is no help anyway.
+    static let maxHits = 5_000
 
     init(root: URL) { self.root = root }
 
@@ -108,6 +113,7 @@ final class SearchSession: Identifiable {
         stop()
         hits = []
         scanned = 0
+        truncated = false
         guard !options.isEmpty else { return }
         generation += 1
         running = true
@@ -126,15 +132,22 @@ final class SearchSession: Identifiable {
 
     func stop() {
         control.cancelled = true
-        query?.stop()
-        if let observer { NotificationCenter.default.removeObserver(observer) }
-        observer = nil
+        if let q = query { q.operationQueue?.addOperation { q.stop() } }
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
         query = nil
         running = false
     }
 
     private func progress(_ n: Int, _ gen: Int) { if gen == generation { scanned = n } }
-    private func append(_ batch: [SearchHit], _ gen: Int) { if gen == generation { hits += batch } }
+    private func append(_ batch: [SearchHit], _ gen: Int) {
+        guard gen == generation, !truncated else { return }
+        hits += batch.prefix(Self.maxHits - hits.count)
+        if hits.count >= Self.maxHits {
+            truncated = true
+            control.cancelled = true
+        }
+    }
     private func done(_ gen: Int) { if gen == generation { running = false } }
 
     private func startSpotlight() {
@@ -149,24 +162,37 @@ final class SearchSession: Identifiable {
         if !options.text.isEmpty {
             parts.append(NSPredicate(format: "%K CONTAINS[\(flags)d] %@", "kMDItemTextContent", options.text))
         }
-        q.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: parts)
+        // NSMetadataQuery rejects (throws on) an AND with a single subpredicate.
+        q.predicate = parts.count == 1 ? parts[0] : NSCompoundPredicate(andPredicateWithSubpredicates: parts)
         q.searchScopes = [root]
-        observer = NotificationCenter.default.addObserver(
-            forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.finishSpotlight() }
+        // Gathering and reading results happen on a private queue: a broad query can take
+        // tens of seconds and return ~1M items, which used to freeze the app on the main thread.
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        q.operationQueue = queue
+        let gen = generation, me = WeakRef(self), limit = Self.maxHits
+        for name in [Notification.Name.NSMetadataQueryGatheringProgress, .NSMetadataQueryDidFinishGathering] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: q, queue: queue) { note in
+                let finished = note.name == .NSMetadataQueryDidFinishGathering
+                guard !q.isStopped, finished || q.resultCount >= limit else { return }
+                q.stop()
+                let count = q.resultCount
+                let paths = (0..<min(count, limit)).compactMap {
+                    (q.result(at: $0) as? NSMetadataItem)?.value(forAttribute: NSMetadataItemPathKey) as? String
+                }
+                let truncated = !finished || count > limit
+                Task { @MainActor in me.value?.finishSpotlight(paths, truncated: truncated, gen) }
+            })
         }
         query = q
-        q.start()
+        queue.addOperation { q.start() }
     }
 
-    private func finishSpotlight() {
-        guard let q = query else { return }
-        q.stop()
-        hits = (q.results as? [NSMetadataItem] ?? [])
-            .compactMap { $0.value(forAttribute: NSMetadataItemPathKey) as? String }
-            .map { SearchHit(url: URL(fileURLWithPath: $0)) }
+    private func finishSpotlight(_ paths: [String], truncated: Bool, _ gen: Int) {
+        guard gen == generation else { return }
+        hits = paths.map { SearchHit(url: URL(fileURLWithPath: $0)) }
         scanned = hits.count
+        self.truncated = truncated
         running = false
     }
 }
@@ -252,7 +278,10 @@ struct SearchView: View {
     }
 
     private var status: String {
-        let found = "\(session.hits.count) found"
+        let found = session.truncated
+            ? "Showing the first \(SearchSession.maxHits.formatted()) matches. Narrow the search to see the rest"
+            : "\(session.hits.count) found"
+        if session.truncated { return found }
         if session.options.useSpotlight { return session.running ? "Asking Spotlight…" : found }
         return session.running ? "\(found) · \(session.scanned) files scanned…" : "\(found) in \(session.scanned) files"
     }

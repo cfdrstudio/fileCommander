@@ -136,10 +136,37 @@ final class GitService {
         running.insert(root)
         lastRun[root] = Date()
         Task.detached(priority: .utility) { [weak self] in
-            let data = try? ZipArchive.run(Self.gitPath, ["-C", root, "status", "--porcelain=v1", "-z", "--branch",
-                                                         "--untracked-files=normal"])
-            let state = data.map { RepoState.parse($0, root: root) }
+            let state = Self.status(root)
             await self?.finished(root, state)
+        }
+    }
+
+    /// Runs `git status` without letting the repository run commands of its own. Simply opening
+    /// a folder must be safe, but a repo's `.git/config` (it arrives with any zip or disk) can
+    /// name programs for git to run: `core.fsmonitor` is turned off here, and repos that define
+    /// their own filter drivers, which status may invoke, get no status at all.
+    /// `--no-optional-locks` keeps this background check from taking `index.lock` away from
+    /// the user's own git commands. Blocking.
+    nonisolated static func status(_ root: String) -> RepoState? {
+        guard !definesLocalFilters(root) else { return nil }
+        let data = try? ZipArchive.run(gitPath, ["--no-optional-locks", "-c", "core.fsmonitor=false", "-C", root,
+                                                 "status", "--porcelain=v1", "-z", "--branch",
+                                                 "--untracked-files=normal", "--ignore-submodules=all"])
+        return data.map { RepoState.parse($0, root: root) }
+    }
+
+    /// True when the repo's own config (not the user's global one) sets up a filter driver.
+    /// Reading config runs nothing; an unreadable config counts as unsafe.
+    nonisolated static func definesLocalFilters(_ root: String) -> Bool {
+        guard let data = try? ZipArchive.run(gitPath, ["-C", root, "config", "--list", "--includes",
+                                                       "--show-scope", "--name-only", "-z"])
+        else { return true }
+        // With -z, scope and name are separate NUL-terminated fields: "local\0filter.x.clean\0".
+        let fields = data.split(separator: 0, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
+        return stride(from: 0, to: fields.count - 1, by: 2).contains { i in
+            guard fields[i] == "local" || fields[i] == "worktree" else { return false }
+            let key = fields[i + 1].lowercased()
+            return key.hasPrefix("filter.") && [".clean", ".smudge", ".process"].contains { key.hasSuffix($0) }
         }
     }
 

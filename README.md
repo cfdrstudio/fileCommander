@@ -81,7 +81,8 @@ rar and iso through macOS's built-in `tar`: browse, preview, and copy out with F
 "Extract" menu items; File → Compress / Extract Here make and unpack zips (undoable).
 Inside a Git repository, rows show status badges (M modified, A added, ? untracked, R renamed,
 U conflict; a dot on folders containing changes) and the status bar shows the branch, ahead/behind
-and the number of changes.
+and the number of changes. The check never lets a repository run its own commands (no
+`core.fsmonitor`; repos that define their own filter drivers in `.git/config` show no status).
 
 Tags are Finder's own (same extended attribute), so they show up in Finder and Spotlight; the
 sidebar's Tags section finds tagged files via Spotlight. Compare & Sync marks each difference

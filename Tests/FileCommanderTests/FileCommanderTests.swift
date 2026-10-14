@@ -340,6 +340,20 @@ private func loaded(_ column: Column) async {
         #expect(model.dualPane == false)
     }
 
+    @Test func swapKeepsFocusOnTheSameFolder() throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = root.appendingPathComponent("A"), b = root.appendingPathComponent("B")
+        for d in [a, b] { try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true) }
+        let model = AppModel()
+        model.sides = [PaneSide(tabs: [model.makePane(a)]), PaneSide(tabs: [model.makePane(b)])]
+        model.dualPane = true
+        model.activePane = 0
+        model.swapPanes()
+        #expect(model.sides[1].current.rootURL.path == a.path)
+        #expect(model.active.rootURL.path == a.path)      // still working in A, now on the right
+    }
+
     @Test func applySkipsFoldersThatNoLongerExist() throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -741,6 +755,9 @@ private func loaded(_ column: Column) async {
         let one = try ZipArchive.compress([a])
         #expect(one.lastPathComponent == "A.zip")
         #expect(try ZipArchive.entries(one).map(\.path).contains("A/inner.txt"))
+        let single = try ZipArchive.compress([b])
+        #expect(single.lastPathComponent == "b.txt.zip")
+        #expect(try ZipArchive.entries(single).map(\.path) == ["b.txt"])     // no enclosing folder
         let many = try ZipArchive.compress([a, b])
         #expect(many.lastPathComponent == "Archive.zip")
         #expect(Set(try ZipArchive.entries(many).filter { !$0.isDir }.map(\.path)) == ["A/inner.txt", "b.txt"])
@@ -829,6 +846,34 @@ private func loaded(_ column: Column) async {
         #expect(state.code(for: root.appendingPathComponent("lib").path) == .modified)
         #expect(service.root(for: FileManager.default.temporaryDirectory.path) == nil)
     }
+
+    /// A repo's own config must not get to run commands just because its folder was opened.
+    @Test func repoConfigCannotRunCommands() throws {
+        guard GitService.available else { return }
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let git = { (args: [String]) in
+            try ZipArchive.run("/usr/bin/git", ["-C", root.path, "-c", "user.name=T", "-c", "user.email=t@t"] + args)
+        }
+        _ = try git(["init", "-q", "-b", "main"])
+        try write("v1", to: root.appendingPathComponent("a.txt"))
+        _ = try git(["add", "."])
+        _ = try git(["commit", "-q", "-m", "init"])
+        let marker = root.appendingPathComponent("ran")
+        _ = try git(["config", "core.fsmonitor", "touch '\(marker.path)'; echo"])
+        try write("v2", to: root.appendingPathComponent("a.txt"))
+
+        #expect(GitService.status(root.path)?.code(for: root.appendingPathComponent("a.txt").path) == .modified)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+
+        // Filter drivers defined by the repo itself: no status at all.
+        #expect(!GitService.definesLocalFilters(root.path))
+        _ = try git(["config", "filter.x.clean", "touch '\(marker.path)'; cat"])
+        try write("*.txt filter=x", to: root.appendingPathComponent(".gitattributes"))
+        #expect(GitService.definesLocalFilters(root.path))
+        #expect(GitService.status(root.path) == nil)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
 }
 
 // MARK: - Search
@@ -889,9 +934,35 @@ private func loaded(_ column: Column) async {
     }
 }
 
+@MainActor
+@Suite struct SearchSessionTests {
+    @Test func broadSearchStopsAtTheCap() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for i in 0..<(SearchSession.maxHits + 100) {
+            FileManager.default.createFile(atPath: root.appendingPathComponent("f\(i).txt").path, contents: nil)
+        }
+        let session = SearchSession(root: root)
+        session.options.name = "*.txt"
+        session.start()
+        for _ in 0..<400 where session.running { try await Task.sleep(for: .milliseconds(25)) }
+        #expect(!session.running)
+        #expect(session.hits.count == SearchSession.maxHits)
+        #expect(session.truncated)
+    }
+}
+
 // MARK: - SFTP
 
 @Suite struct SFTPParseTests {
+    @Test func refusesUnsafeBatchInput() {
+        SFTPClient.register(SFTPServer(host: "-oProxyCommand=x"))
+        #expect(throws: SFTPClient.SFTPError.self) { try SFTPClient.batch("-oProxyCommand=x", ["pwd"]) }
+        SFTPClient.register(SFTPServer(host: "example.invalid"))
+        let ref = SFTPRef(target: "example.invalid", path: "/a\n!touch /tmp/x")
+        #expect(throws: SFTPClient.SFTPError.self) { try SFTPClient.makeFolder(ref) }
+    }
+
     @Test func parsesLongListing() {
         let now = DateComponents(calendar: .current, year: 2026, month: 10, day: 14).date!
         let text = """
@@ -1098,6 +1169,14 @@ private func loaded(_ column: Column) async {
 
 @MainActor
 @Suite struct TerminalTests {
+    @Test func controlCharactersAreNeverTyped() {
+        #expect(TerminalController.isSafeToType("/Users/me/Projects/sub dir/ünï ✓"))
+        #expect(!TerminalController.isSafeToType("/tmp/evil\u{03}touch x\r"))
+        #expect(!TerminalController.isSafeToType("/tmp/a\nb"))
+        #expect(!TerminalController.isSafeToType("/tmp/esc\u{1B}[A"))
+        #expect(!TerminalController.isSafeToType("/tmp/c1\u{9B}x"))
+    }
+
     @Test func shellReportsDirectoryAndFollowsCd() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

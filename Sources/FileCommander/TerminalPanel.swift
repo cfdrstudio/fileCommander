@@ -47,10 +47,16 @@ final class TerminalController: NSObject, LocalProcessTerminalViewDelegate {
 
     /// Changes the shell's folder, only when it's idle at its prompt.
     func cd(_ dir: URL) {
-        guard dir.path != directory, shellIsIdle else { return }
+        guard dir.path != directory, shellIsIdle, Self.isSafeToType(dir.path) else { return }
         // ^U clears anything half-typed on the prompt line first.
         view.send(txt: "\u{15} cd -- \(Self.shellQuote(dir.path))\r")
         directory = dir.path
+    }
+
+    /// The `cd` is typed as keystrokes, so control characters in a folder name (allowed on
+    /// APFS) would act as editing keys rather than text: such folders aren't followed.
+    static func isSafeToType(_ path: String) -> Bool {
+        !path.unicodeScalars.contains { $0.properties.generalCategory == .control }
     }
 
     static func shellQuote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
