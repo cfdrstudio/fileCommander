@@ -1,8 +1,8 @@
 name: Tests
 
+# Runs on pull requests and on demand (Actions → Tests → Run workflow). Not on every push to
+# main: on a private repo macOS minutes count 10× against the free allowance.
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
