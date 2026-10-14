@@ -1,0 +1,8 @@
+# Swift Package Manager build output
+.build/
+.swiftpm/
+
+# App bundle produced by build-app.sh
+dist/
+
+.DS_Store
