@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- fileCommander app icon (macOS grid: 824×824 body inside a 1024 canvas).
+       Two panes (dual-pane file manager); the selected row is amber; the amber
+       badge with › is the "copy to the other pane" command. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4361FF"/>
+      <stop offset="0.55" stop-color="#2A3BC4"/>
+      <stop offset="1" stop-color="#151C5E"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC94A"/>
+      <stop offset="1" stop-color="#FF9A0F"/>
+    </linearGradient>
+    <linearGradient id="paneR" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EEF1FF"/>
+      <stop offset="1" stop-color="#D9E0FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Body -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#sheen)"/>
+  <rect x="102" y="102" width="820" height="820" rx="184" fill="none" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="4"/>
+
+  <!-- Pane shadows -->
+  <g fill="#0A0F3A" opacity="0.32">
+    <rect x="214" y="300" width="276" height="428" rx="40"/>
+    <rect x="534" y="300" width="276" height="428" rx="40"/>
+  </g>
+
+  <!-- Left pane (folder tab + body) -->
+  <g fill="#FFFFFF">
+    <rect x="214" y="252" width="128" height="64" rx="24"/>
+    <rect x="214" y="282" width="276" height="428" rx="40"/>
+  </g>
+  <!-- Right pane -->
+  <g fill="url(#paneR)">
+    <rect x="534" y="252" width="128" height="64" rx="24"/>
+    <rect x="534" y="282" width="276" height="428" rx="40"/>
+  </g>
+
+  <!-- Rows: left pane, second row selected -->
+  <rect x="248" y="338" width="208" height="34" rx="17" fill="#D3DAF8"/>
+  <rect x="248" y="398" width="208" height="34" rx="17" fill="url(#amber)"/>
+  <rect x="248" y="458" width="168" height="34" rx="17" fill="#D3DAF8"/>
+  <rect x="248" y="518" width="188" height="34" rx="17" fill="#D3DAF8"/>
+  <rect x="248" y="578" width="132" height="34" rx="17" fill="#D3DAF8"/>
+  <!-- Rows: right pane -->
+  <rect x="568" y="338" width="188" height="34" rx="17" fill="#B9C4F2"/>
+  <rect x="568" y="398" width="150" height="34" rx="17" fill="#B9C4F2"/>
+  <rect x="568" y="458" width="208" height="34" rx="17" fill="#B9C4F2"/>
+  <rect x="568" y="518" width="124" height="34" rx="17" fill="#B9C4F2"/>
+
+  <!-- Command badge: copy → other pane -->
+  <circle cx="512" cy="736" r="116" fill="#151C5E" opacity="0.30"/>
+  <circle cx="512" cy="724" r="112" fill="#FFFFFF"/>
+  <circle cx="512" cy="724" r="96" fill="url(#amber)"/>
+  <path d="M484 672 L540 724 L484 776" fill="none" stroke="#FFFFFF" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

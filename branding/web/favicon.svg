@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Simplified fileCommander mark for small sizes (favicon, 16–32 px icons). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4361FF"/>
+      <stop offset="1" stop-color="#1A237E"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC94A"/>
+      <stop offset="1" stop-color="#FF9A0F"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <rect x="9" y="13" width="20" height="31" rx="4" fill="#FFFFFF"/>
+  <rect x="35" y="13" width="20" height="31" rx="4" fill="#D9E0FF"/>
+  <rect x="12" y="20" width="14" height="5" rx="2.5" fill="url(#amber)"/>
+  <circle cx="32" cy="45" r="12" fill="#FFFFFF"/>
+  <circle cx="32" cy="45" r="9.5" fill="url(#amber)"/>
+  <path d="M29.5 40 L34.5 45 L29.5 50" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

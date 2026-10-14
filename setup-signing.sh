@@ -1,6 +1,6 @@
 #!/bin/zsh
 # One-time setup, run by you: creates a self-signed code-signing certificate named
-# "One Commander Local Signing" in your login keychain and trusts it for code signing.
+# "fileCommander Local Signing" in your login keychain and trusts it for code signing.
 #
 # Why: build-app.sh otherwise signs "ad hoc", so every rebuild looks like a brand-new app to
 # macOS and it asks again for Desktop/Documents/Downloads access. Signing with a stable
@@ -8,10 +8,10 @@
 #
 # What it changes: adds one certificate + private key to your login keychain and marks the
 # certificate trusted for code signing only (macOS asks for your password to allow that).
-# Undo: open Keychain Access, search "One Commander Local Signing", delete the certificate
+# Undo: open Keychain Access, search "fileCommander Local Signing", delete the certificate
 # and its key.
 set -euo pipefail
-NAME="One Commander Local Signing"
+NAME="fileCommander Local Signing"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
 if security find-identity -v -p codesigning | grep -q "$NAME"; then

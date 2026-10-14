@@ -102,7 +102,7 @@ enum SFTPClient {
             return "\(target)'s host key isn't known yet. Connect once with `ssh \(target)` in Terminal to verify and save it, then try again."
         }
         if stderr.contains("Permission denied") {
-            return "Permission denied by \(target). One Commander signs in with SSH keys only (ssh-agent, ~/.ssh/config or the key file you chose) — passwords aren't supported."
+            return "Permission denied by \(target). fileCommander signs in with SSH keys only (ssh-agent, ~/.ssh/config or the key file you chose) — passwords aren't supported."
         }
         if stderr.contains("Could not resolve hostname") { return "Can't find the server “\(target)”." }
         if stderr.contains("Connection refused") { return "\(target) refused the connection (is SSH/SFTP enabled on it?)." }
@@ -185,7 +185,7 @@ enum SFTPClient {
     /// Fetches one file into a temp cache (for Quick Look / opening).
     static func fetchForViewing(_ ref: SFTPRef) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OneCommander-sftp/\(String(ref.target.hashValue, radix: 36))")
+            .appendingPathComponent("fileCommander-sftp/\(String(ref.target.hashValue, radix: 36))")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dest = dir.appendingPathComponent((ref.path as NSString).lastPathComponent)
         try? FileManager.default.removeItem(at: dest)

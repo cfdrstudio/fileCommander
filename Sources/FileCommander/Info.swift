@@ -58,7 +58,7 @@ struct OpenWithMenu: View {
     }
 }
 
-/// One Commander's Get Info: general facts, permissions, default app and tags.
+/// fileCommander's Get Info: general facts, permissions, default app and tags.
 struct InfoView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss

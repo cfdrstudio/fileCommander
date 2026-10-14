@@ -1,21 +1,23 @@
 #!/bin/zsh
-# Builds "One Commander.app" into ./dist
+# Builds "fileCommander.app" into ./dist
 set -e
 cd "$(dirname "$0")"
 swift build -c release
-APP="dist/One Commander.app"
+APP="dist/fileCommander.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/OneCommander "$APP/Contents/MacOS/OneCommander"
+cp .build/release/FileCommander "$APP/Contents/MacOS/FileCommander"
+cp branding/app/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>One Commander</string>
-  <key>CFBundleDisplayName</key><string>One Commander</string>
-  <key>CFBundleIdentifier</key><string>local.onecommander.mac</string>
-  <key>CFBundleExecutable</key><string>OneCommander</string>
+  <key>CFBundleName</key><string>fileCommander</string>
+  <key>CFBundleDisplayName</key><string>fileCommander</string>
+  <key>CFBundleIdentifier</key><string>local.filecommander.mac</string>
+  <key>CFBundleExecutable</key><string>FileCommander</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
@@ -25,7 +27,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 # Sign with the stable local certificate if setup-signing.sh created one (keeps macOS
 # privacy permissions across rebuilds); otherwise ad hoc.
-IDENTITY="One Commander Local Signing"
+IDENTITY="fileCommander Local Signing"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
   codesign --force --deep -s "$IDENTITY" "$APP"
   echo "Signed with \"$IDENTITY\""
