@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "OneCommander",
+    name: "FileCommander",
     platforms: [.macOS(.v14)],
     dependencies: [
         // Terminal emulator for the built-in terminal panel. Pinned to an exact release.
@@ -10,9 +10,9 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "OneCommander",
+            name: "FileCommander",
             dependencies: [.product(name: "SwiftTerm", package: "SwiftTerm")],
-            path: "Sources/OneCommander"),
-        .testTarget(name: "OneCommanderTests", dependencies: ["OneCommander"], path: "Tests/OneCommanderTests"),
+            path: "Sources/FileCommander"),
+        .testTarget(name: "FileCommanderTests", dependencies: ["FileCommander"], path: "Tests/FileCommanderTests"),
     ]
 )

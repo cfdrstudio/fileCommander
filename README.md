@@ -1,15 +1,20 @@
-# One Commander for macOS
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/logo-dark.png">
+  <img src="branding/logo-light.png" alt="fileCommander" width="420">
+</picture>
+
+# fileCommander for macOS
 
 A native SwiftUI file manager inspired by One Commander (Windows): dual panes of
 Miller columns, a Quick Look preview panel, and keyboard-first navigation.
 
 ## Build & run
 
-    ./build-app.sh                       # -> dist/One Commander.app
-    open "dist/One Commander.app"
-    open "dist/One Commander.app" --args ~/Projects ~/Downloads   # start folders for left/right pane
+    ./build-app.sh                       # -> dist/fileCommander.app
+    open "dist/fileCommander.app"
+    open "dist/fileCommander.app" --args ~/Projects ~/Downloads   # start folders for left/right pane
 
-Optional, once: `./setup-signing.sh` creates a self-signed "One Commander Local Signing"
+Optional, once: `./setup-signing.sh` creates a self-signed "fileCommander Local Signing"
 certificate in your login keychain (asks for your password to trust it for code signing).
 `build-app.sh` then signs with it, so macOS keeps folder-access permissions across rebuilds
 instead of asking again each time. Undo by deleting that certificate in Keychain Access.
@@ -109,6 +114,7 @@ onto folders or path segments, or to/from Finder; drag folders to the sidebar to
 - `SFTP.swift`, `Servers.swift` — SFTP via the system `sftp` (shared SSH connection), NetFS mounting, Connect sheet
 - `Info.swift` — Get Info and the Open With menu
 - `Theme.swift` — themes, density and the Settings window
+- `branding/` — logo, app icon, favicons and brand guide (`branding/make-assets.sh` regenerates them)
 - `Commands.swift` — one command registry feeding both the menu bar and the palette
 - `Palette.swift` — command palette and Go to Folder, background folder index
 - `PaneView.swift`, `JobsView.swift`, `SidebarAndPreview.swift`, `App.swift` — UI
