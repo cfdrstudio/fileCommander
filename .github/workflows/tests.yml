@@ -1,0 +1,44 @@
+name: Tests
+
+# Runs on pull requests and on demand (Actions → Tests → Run workflow). Not on every push to
+# main: on a private repo macOS minutes count 10× against the free allowance.
+on:
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch/PR cancels the older run (macOS minutes are costly).
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: swift test (macOS 26)
+    # Pinned rather than macos-latest: the app uses macOS 26 SDK APIs, so it needs Xcode 26.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build
+        run: swift build --build-tests
+
+      # Includes integration tests that start a private sshd on 127.0.0.1 and a login shell.
+      - name: Test
+        run: swift test
