@@ -18,7 +18,7 @@ enum ZipArchive {
 
     static func isZip(_ url: URL) -> Bool { url.pathExtension.lowercased() == "zip" }
 
-    /// Archive types One Commander can open like folders. Zip is read natively; the others
+    /// Archive types fileCommander can open like folders. Zip is read natively; the others
     /// through macOS's built-in `tar` (libarchive).
     static let tarSuffixes = [".tar", ".tgz", ".tar.gz", ".tbz", ".tbz2", ".tar.bz2", ".txz", ".tar.xz",
                               ".7z", ".rar", ".iso", ".cpio", ".xar"]
@@ -282,7 +282,7 @@ enum ZipArchive {
     static func extractForViewing(_ zip: URL, inner: String) throws -> URL {
         let fm = FileManager.default
         let key = String(zip.path.hashValue, radix: 36)
-        let dir = fm.temporaryDirectory.appendingPathComponent("OneCommander-zip/\(key)")
+        let dir = fm.temporaryDirectory.appendingPathComponent("fileCommander-zip/\(key)")
         let target = dir.appendingPathComponent(inner)
         if fm.fileExists(atPath: target.path) { return target }
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import OneCommander
+@testable import FileCommander
 
 // MARK: - Helpers
 
@@ -1222,5 +1222,28 @@ private func loaded(_ column: Column) async {
         #expect(CloudState(isUbiquitous: true, status: .current, downloading: false, uploading: true) == .uploading)
         #expect(CloudState(isUbiquitous: true, status: .current, downloading: false, uploading: false) == .downloaded)
         #expect(CloudState.downloaded.symbol == nil && CloudState.notDownloaded.symbol != nil)
+    }
+}
+
+// MARK: - Rename migration
+
+@MainActor
+@Suite struct SettingsMigrationTests {
+    @Test func copiesOldSettingsOnceWithoutOverwriting() throws {
+        let suite = "fc-migration-test-\(UUID().uuidString)"
+        let d = try #require(UserDefaults(suiteName: suite))
+        defer { d.removePersistentDomain(forName: suite) }
+        d.set("nord", forKey: "theme")                                  // already set: must survive
+        let old: [String: Any] = ["theme": "paper", "favorites": ["/a", "/b"], "fontSize": 14.0, "unrelated": 1]
+
+        AppModel.migrateSettings(from: old, to: d)
+        #expect(d.string(forKey: "theme") == "nord")
+        #expect(d.stringArray(forKey: "favorites") == ["/a", "/b"])
+        #expect(d.double(forKey: "fontSize") == 14)
+        #expect(d.object(forKey: "unrelated") == nil)                   // only known keys
+
+        d.removeObject(forKey: "favorites")
+        AppModel.migrateSettings(from: old, to: d)                      // runs once only
+        #expect(d.object(forKey: "favorites") == nil)
     }
 }

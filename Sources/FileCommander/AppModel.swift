@@ -170,6 +170,9 @@ final class AppModel {
     @ObservationIgnored private let defaults = UserDefaults.standard
 
     init() {
+        if Bundle.main.bundleIdentifier == "local.filecommander.mac" {
+            Self.migrateSettings(from: defaults.persistentDomain(forName: "local.onecommander.mac"), to: defaults)
+        }
         favorites = (defaults.stringArray(forKey: "favorites") ?? []).map { URL(fileURLWithPath: $0) }
         recentFolders = defaults.stringArray(forKey: "recentFolders") ?? []
         showFolderSizes = defaults.bool(forKey: "showFolderSizes")
@@ -189,7 +192,7 @@ final class AppModel {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser
         let downloads = fm.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? home
-        // Optional start folders: OneCommander [left-path] [right-path]. Otherwise restore last session.
+        // Optional start folders: fileCommander [left-path] [right-path]. Otherwise restore last session.
         // Only real paths count: AppKit flags like `-NSFoo YES` also arrive in argv.
         let args = CommandLine.arguments.dropFirst()
             .filter { $0.hasPrefix("/") || $0.hasPrefix("~") }
@@ -212,6 +215,22 @@ final class AppModel {
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveSession() }
+        }
+    }
+
+    /// Settings the app stores. Used to carry them over from the app's previous identifier
+    /// ("One Commander", local.onecommander.mac) the first time fileCommander launches.
+    static let settingKeys = [
+        "favorites", "recentFolders", "workspaces", "session", "showFolderSizes", "knownTags", "servers",
+        "theme", "density", "fontSize", "terminalFontSize", "terminalSync", "previewWidth", "terminalHeight",
+    ]
+
+    /// Copies settings once; never overwrites anything already set in the new domain.
+    static func migrateSettings(from old: [String: Any]?, to new: UserDefaults) {
+        guard let old, !new.bool(forKey: "migratedLegacySettings") else { return }
+        new.set(true, forKey: "migratedLegacySettings")
+        for key in settingKeys where new.object(forKey: key) == nil {
+            if let value = old[key] { new.set(value, forKey: key) }
         }
     }
 

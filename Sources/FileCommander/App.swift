@@ -2,7 +2,7 @@ import Quartz
 import SwiftUI
 
 @main
-struct OneCommanderApp: App {
+struct FileCommanderApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var model = AppModel()
 
@@ -13,7 +13,7 @@ struct OneCommanderApp: App {
     }
 
     var body: some Scene {
-        Window("One Commander", id: "main") {
+        Window("fileCommander", id: "main") {
             ContentView()
                 .environment(model)
         }
