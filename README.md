@@ -19,7 +19,11 @@ certificate in your login keychain (asks for your password to trust it for code 
 `build-app.sh` then signs with it, so macOS keeps folder-access permissions across rebuilds
 instead of asking again each time. Undo by deleting that certificate in Keychain Access.
 
-Requires macOS 14+ and Xcode command line tools. The first build downloads SwiftTerm. Drag the .app into /Applications to keep it.
+Requires macOS 14+, Xcode command line tools and Rust (`brew install rustup`; the pinned
+nightly in `CardinalBridge/rust-toolchain.toml` installs itself on first build) for the
+Cardinal search engine. The first build downloads SwiftTerm and the Rust crates. Drag the .app
+into /Applications to keep it. For `swift build` / `swift test` on their own, run
+`./build-cardinal.sh` first (it builds the Rust library that Swift links).
 
 ## Keys
 
@@ -33,7 +37,7 @@ Requires macOS 14+ and Xcode command line tools. The first build downloads Swift
 | ⌘3 / ⌘2 | View as Miller columns / as a sortable list (Name, Size, Date Modified, Kind) |
 | ⌃⌥⌘1…4 | Sort by name / size / date / kind (again to reverse); folders stay on top |
 | ⌘F | Filter the current folder as you type (`report`, or wildcards like `*.pdf`); Esc clears |
-| ⇧⌘F | Search in files: by name and/or containing text (shows the matching line), or via Spotlight |
+| ⇧⌘F | Search, powered by [Cardinal](https://github.com/cardisoft/cardinal): instant name search from an index kept current by FSEvents, with Cardinal's Everything-style syntax (`*.pdf`, `report draft`, `ext:png;jpg`, `size:>100mb`, `a\|b`, `!tmp`, `regex:`…), optional containing-text filter (shows the matching line), or Spotlight |
 | ⇧⌘P / ⌘P | Command palette / Go to folder (fuzzy over recent + indexed folders, or type a path) |
 | ↑ ↓ / PgUp PgDn / Home End | Move cursor (add ⇧ to extend the selection) |
 | Click, ⌘-click, ⇧-click | Select, toggle, select range |
@@ -110,7 +114,9 @@ onto folders or path segments, or to/from Finder; drag folders to the sidebar to
 - `Archive.swift` — zip central-directory reader + tar/7z/rar via `tar`; extract/compress
 - `QuickLookPanel.swift` — the ⌘Y Quick Look window
 - `Git.swift` — `git status` parsing and a throttled background status service
-- `Search.swift` — content/name search engine, Spotlight mode, results sheet
+- `Search.swift` — search sheet on Cardinal's index (`CardinalIndex`, `SearchIndex`), Spotlight mode
+- `Vendor/cardinal/` — Cardinal's search crates (Rust, MIT, see its README); `CardinalBridge/` — their
+  C API (`Sources/CCardinal/cardinal_bridge.h`), built by `build-cardinal.sh`
 - `TerminalPanel.swift` — terminal panel on [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (pinned 1.19.0)
 - `SFTP.swift`, `Servers.swift` — SFTP via the system `sftp` (shared SSH connection), NetFS mounting, Connect sheet
 - `Info.swift` — Get Info and the Open With menu
@@ -135,3 +141,9 @@ using throwaway temp folders.
 
 Without `setup-signing.sh`, `build-app.sh` signs ad hoc, so macOS treats every rebuild as a new
 app and asks again for Desktop/Documents/Downloads access.
+
+Search keeps an in-memory index of the folder tree you search in (a search outside it re-indexes
+the common parent, unless that is `/`, `/Users` or `/Volumes`). Other apps' sandbox containers
+under `~/Library` are skipped so macOS doesn't ask about "data from other apps". On quit the
+index (file names only) is saved to `~/Library/Caches/local.filecommander.mac/SearchIndex/` so the
+next launch skips the walk; delete that folder to drop it.

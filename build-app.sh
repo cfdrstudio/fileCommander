@@ -2,12 +2,18 @@
 # Builds "fileCommander.app" into ./dist
 set -e
 cd "$(dirname "$0")"
+./build-cardinal.sh   # Cardinal search engine (Rust), linked into the app
 swift build -c release
 APP="dist/fileCommander.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/FileCommander "$APP/Contents/MacOS/FileCommander"
 cp branding/app/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# The About window shows Credits.html; it credits the Cardinal search engine, whose MIT
+# license must ship with the app.
+cp branding/app/Credits.html "$APP/Contents/Resources/Credits.html"
+mkdir -p "$APP/Contents/Resources/Licenses"
+cp Vendor/cardinal/LICENSE "$APP/Contents/Resources/Licenses/Cardinal-LICENSE.txt"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

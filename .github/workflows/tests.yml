@@ -36,6 +36,23 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'Package.swift') }}
           restore-keys: spm-${{ runner.os }}-
 
+      - name: Cache Cardinal (Rust) build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            CardinalBridge/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('CardinalBridge/Cargo.lock', 'CardinalBridge/rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # Cardinal's search engine (Vendor/cardinal) is Rust; rustup on the runner installs the
+      # toolchain pinned in CardinalBridge/rust-toolchain.toml.
+      - name: Build and test Cardinal bridge
+        run: |
+          ./build-cardinal.sh
+          cd CardinalBridge && MACOSX_DEPLOYMENT_TARGET=14.0 cargo test --release --locked
+
       - name: Build
         run: swift build --build-tests
 

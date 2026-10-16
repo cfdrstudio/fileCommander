@@ -214,7 +214,10 @@ final class AppModel {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.saveSession() }
+            MainActor.assumeIsolated {
+                self?.saveSession()
+                SearchIndex.saveForNextLaunch()
+            }
         }
     }
 
