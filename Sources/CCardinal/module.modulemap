@@ -1,0 +1,7 @@
+module CCardinal [system] {
+    header "cardinal_bridge.h"
+    link "cardinal_bridge"
+    link framework "CoreFoundation"
+    link framework "CoreServices"
+    export *
+}

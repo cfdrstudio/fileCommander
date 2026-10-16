@@ -214,7 +214,10 @@ final class AppModel {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.saveSession() }
+            MainActor.assumeIsolated {
+                self?.saveSession()
+                SearchIndex.saveForNextLaunch()
+            }
         }
     }
 
@@ -248,7 +251,11 @@ final class AppModel {
 
     func refreshAll() { sides.flatMap(\.tabs).forEach { $0.refresh() } }
     func go(to url: URL) { active.navigate(to: url) }
-    func swapPanes() { sides.swapAt(0, 1) }
+    /// Focus moves with the folder, so the pane you were working in stays the active one.
+    func swapPanes() {
+        sides.swapAt(0, 1)
+        if dualPane { activePane = 1 - activePane }
+    }
 
     func focusPane(_ index: Int) {
         guard index == 0 || dualPane else { return }

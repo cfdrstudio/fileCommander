@@ -85,6 +85,14 @@ enum FileLister {
         }
     }
 
+    /// Folders macOS guards with a permission prompt. Reading even their own tags counts as
+    /// access, so listing the home folder would prompt (and wait) for each one; they show no tags.
+    static let privacyProtected: Set<String> = {
+        let fm = FileManager.default
+        return Set([FileManager.SearchPathDirectory.desktopDirectory, .documentDirectory, .downloadsDirectory]
+            .compactMap { fm.urls(for: $0, in: .userDomainMask).first?.standardizedFileURL.path })
+    }()
+
     static func item(for url: URL) -> FileItem {
         let v = try? url.resourceValues(forKeys: Set(keys))
         var isDir = v?.isDirectory ?? false
@@ -99,7 +107,7 @@ enum FileLister {
             isHidden: v?.isHidden ?? url.lastPathComponent.hasPrefix("."),
             size: isDir ? nil : v?.fileSize.map(Int64.init),
             modified: v?.contentModificationDate,
-            tags: TagStore.read(url),
+            tags: privacyProtected.contains(url.standardizedFileURL.path) ? [] : TagStore.read(url),
             cloud: isDir ? nil : CloudState(
                 isUbiquitous: v?.isUbiquitousItem, status: v?.ubiquitousItemDownloadingStatus,
                 downloading: v?.ubiquitousItemIsDownloading, uploading: v?.ubiquitousItemIsUploading))

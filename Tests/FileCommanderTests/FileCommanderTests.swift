@@ -340,6 +340,20 @@ private func loaded(_ column: Column) async {
         #expect(model.dualPane == false)
     }
 
+    @Test func swapKeepsFocusOnTheSameFolder() throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = root.appendingPathComponent("A"), b = root.appendingPathComponent("B")
+        for d in [a, b] { try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true) }
+        let model = AppModel()
+        model.sides = [PaneSide(tabs: [model.makePane(a)]), PaneSide(tabs: [model.makePane(b)])]
+        model.dualPane = true
+        model.activePane = 0
+        model.swapPanes()
+        #expect(model.sides[1].current.rootURL.path == a.path)
+        #expect(model.active.rootURL.path == a.path)      // still working in A, now on the right
+    }
+
     @Test func applySkipsFoldersThatNoLongerExist() throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -741,6 +755,9 @@ private func loaded(_ column: Column) async {
         let one = try ZipArchive.compress([a])
         #expect(one.lastPathComponent == "A.zip")
         #expect(try ZipArchive.entries(one).map(\.path).contains("A/inner.txt"))
+        let single = try ZipArchive.compress([b])
+        #expect(single.lastPathComponent == "b.txt.zip")
+        #expect(try ZipArchive.entries(single).map(\.path) == ["b.txt"])     // no enclosing folder
         let many = try ZipArchive.compress([a, b])
         #expect(many.lastPathComponent == "Archive.zip")
         #expect(Set(try ZipArchive.entries(many).filter { !$0.isDir }.map(\.path)) == ["A/inner.txt", "b.txt"])
@@ -829,69 +846,201 @@ private func loaded(_ column: Column) async {
         #expect(state.code(for: root.appendingPathComponent("lib").path) == .modified)
         #expect(service.root(for: FileManager.default.temporaryDirectory.path) == nil)
     }
+
+    /// A repo's own config must not get to run commands just because its folder was opened.
+    @Test func repoConfigCannotRunCommands() throws {
+        guard GitService.available else { return }
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let git = { (args: [String]) in
+            try ZipArchive.run("/usr/bin/git", ["-C", root.path, "-c", "user.name=T", "-c", "user.email=t@t"] + args)
+        }
+        _ = try git(["init", "-q", "-b", "main"])
+        try write("v1", to: root.appendingPathComponent("a.txt"))
+        _ = try git(["add", "."])
+        _ = try git(["commit", "-q", "-m", "init"])
+        let marker = root.appendingPathComponent("ran")
+        _ = try git(["config", "core.fsmonitor", "touch '\(marker.path)'; echo"])
+        try write("v2", to: root.appendingPathComponent("a.txt"))
+
+        #expect(GitService.status(root.path)?.code(for: root.appendingPathComponent("a.txt").path) == .modified)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+
+        // Filter drivers defined by the repo itself: no status at all.
+        #expect(!GitService.definesLocalFilters(root.path))
+        _ = try git(["config", "filter.x.clean", "touch '\(marker.path)'; cat"])
+        try write("*.txt filter=x", to: root.appendingPathComponent(".gitattributes"))
+        #expect(GitService.definesLocalFilters(root.path))
+        #expect(GitService.status(root.path) == nil)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
 }
 
 // MARK: - Search
 
+@MainActor
 @Suite struct SearchTests {
-    private func tree() throws -> URL {
+    // Each test folder gets its own small index instead of the whole disk.
+    init() { SearchIndex.broadRoot = nil }
+
+    /// A small tree, once the shared index has it: when an earlier test's index already covers
+    /// the temp folder, new files reach it through FSEvents a moment after they are written.
+    private func tree() async throws -> URL {
         let root = try makeTempDir()
         try write("alpha\nthe Needle is here\nomega", to: root.appendingPathComponent("docs/a.txt"))
         try write("nothing", to: root.appendingPathComponent("docs/b.md"))
         try write("needle in hidden", to: root.appendingPathComponent(".secret/c.txt"))
         try write("needle in git", to: root.appendingPathComponent(".git/config"))
-        try write("needle", to: root.appendingPathComponent("node_modules/x.txt"))
         var bin = Data("needle".utf8); bin.append(0); bin.append(contentsOf: Data("needle".utf8))
         try bin.write(to: root.appendingPathComponent("data.bin"))
+        let files: Set = ["a.txt", "b.md", "c.txt", "config", "data.bin"]
+        for _ in 0..<200 {
+            if files.isSubset(of: try await names(root, SearchOptions(name: "*", includeHidden: true))) { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
         return root
     }
 
-    private func run(_ root: URL, _ o: SearchOptions) -> [SearchHit] {
-        let box = Box()
-        SearchEngine.scan(root, o, control: JobControl(), progress: { _ in }, emit: { box.add($0) })
-        return box.hits.sorted { $0.url.path < $1.url.path }
+    /// Runs a search the way the sheet does (through the shared Cardinal index).
+    private func run(_ root: URL, _ o: SearchOptions) async throws -> SearchSession {
+        let session = SearchSession(root: root)
+        session.options = o
+        session.start()
+        for _ in 0..<600 where session.running { try await Task.sleep(for: .milliseconds(25)) }
+        #expect(!session.running)
+        return session
     }
 
-    final class Box: @unchecked Sendable {
-        private let lock = NSLock()
-        private var _hits: [SearchHit] = []
-        var hits: [SearchHit] { lock.withLock { _hits } }
-        func add(_ h: [SearchHit]) { lock.withLock { _hits += h } }
+    private func names(_ root: URL, _ o: SearchOptions) async throws -> [String] {
+        try await run(root, o).hits.map(\.url.lastPathComponent).sorted()
     }
 
-    @Test func contentSearchSkipsBinaryHiddenAndVendored() throws {
-        let root = try tree()
+    @Test func contentSearchSkipsBinaryAndHidden() async throws {
+        let root = try await tree()
         defer { try? FileManager.default.removeItem(at: root) }
-        let hits = run(root, SearchOptions(text: "needle"))
+        let hits = try await run(root, SearchOptions(text: "needle")).hits
         #expect(hits.map(\.url.lastPathComponent) == ["a.txt"])
-        #expect(hits[0].line == 2)
-        #expect(hits[0].snippet == "the Needle is here")
-        #expect(run(root, SearchOptions(text: "needle", caseSensitive: true)).isEmpty)
-        #expect(Set(run(root, SearchOptions(text: "needle", includeHidden: true)).map(\.url.lastPathComponent)) == ["a.txt", "c.txt"])
+        #expect(hits.first?.line == 2)
+        #expect(hits.first?.snippet == "the Needle is here")
+        #expect(try await names(root, SearchOptions(text: "needle", caseSensitive: true)).isEmpty)
+        #expect(try await names(root, SearchOptions(text: "needle", includeHidden: true)) == ["a.txt", "c.txt", "config"])
+        // Inside a subfolder, and with quotes and backslashes in the text.
+        try write(#"say "hi" \o/"#, to: root.appendingPathComponent("docs/q.txt"))
+        try write(#"say "hi" \o/"#, to: root.appendingPathComponent("docs/.cache/q.txt"))
+        let docs = root.appendingPathComponent("docs")
+        var found: [String] = []
+        for _ in 0..<100 where found.isEmpty {
+            found = try await names(docs, SearchOptions(text: #"SAY "hi" \o/"#))
+            if found.isEmpty { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        #expect(found == ["q.txt"])
     }
 
-    @Test func nameSearchWithWildcardsAndFolders() throws {
-        let root = try tree()
+    @Test func nameSearchWithWildcardsFoldersAndCardinalSyntax() async throws {
+        let root = try await tree()
         defer { try? FileManager.default.removeItem(at: root) }
-        #expect(run(root, SearchOptions(name: "*.md")).map(\.url.lastPathComponent) == ["b.md"])
-        #expect(Set(run(root, SearchOptions(name: "DOC")).map(\.url.lastPathComponent)) == ["docs"])
-        #expect(run(root, SearchOptions(name: "*.txt", text: "alpha")).map(\.url.lastPathComponent) == ["a.txt"])
+        #expect(try await names(root, SearchOptions(name: "*.md")) == ["b.md"])
+        #expect(try await names(root, SearchOptions(name: "DOC")) == ["docs"])
+        #expect(try await names(root, SearchOptions(name: "*.txt", text: "alpha")) == ["a.txt"])
+        #expect(try await names(root, SearchOptions(name: "ext:md;bin")) == ["b.md", "data.bin"])
+        #expect(try await names(root, SearchOptions(name: "a.txt|b.md")) == ["a.txt", "b.md"])
+        // Hits carry real paths and stay inside the searched folder.
+        let hits = try await run(root.appendingPathComponent("docs"), SearchOptions(name: "*")).hits
+        #expect(hits.map(\.url.lastPathComponent).sorted() == ["a.txt", "b.md"])
     }
 
-    @Test func cancelStopsEarly() throws {
-        let root = try tree()
+    @Test func typingSearchesWithoutReturn() async throws {
+        let root = try await tree()
         defer { try? FileManager.default.removeItem(at: root) }
-        let control = JobControl()
-        control.cancelled = true
-        let box = Box()
-        SearchEngine.scan(root, SearchOptions(name: "*"), control: control, progress: { _ in }, emit: { box.add($0) })
-        #expect(box.hits.isEmpty)
+        let session = SearchSession(root: root)
+        session.options.name = "b."
+        session.scheduleSearch()
+        session.options.name = "b.md" // a newer keystroke replaces the pending search
+        session.scheduleSearch()
+        for _ in 0..<200 where session.hits.isEmpty { try await Task.sleep(for: .milliseconds(25)) }
+        #expect(session.hits.map(\.url.lastPathComponent) == ["b.md"])
+        session.options.name = ""
+        session.scheduleSearch()
+        for _ in 0..<200 where !session.hits.isEmpty { try await Task.sleep(for: .milliseconds(25)) }
+        #expect(session.hits.isEmpty)
+    }
+
+    @Test func badQueryShowsAnError() async throws {
+        let root = try await tree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = try await run(root, SearchOptions(name: "\"unterminated"))
+        #expect(session.hits.isEmpty)
+        #expect(session.error != nil)
+    }
+
+    @Test func indexFollowsChanges() async throws {
+        let root = try await tree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(try await names(root, SearchOptions(name: "later")).isEmpty)
+        try write("x", to: root.appendingPathComponent("docs/later.txt"))
+        var found: [String] = []
+        for _ in 0..<100 where found.isEmpty {
+            try await Task.sleep(for: .milliseconds(100))
+            found = try await names(root, SearchOptions(name: "later"))
+        }
+        #expect(found == ["later.txt"])
+    }
+
+    @Test func stopCancelsTheSearch() async throws {
+        let root = try await tree()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let session = SearchSession(root: root)
+        session.options = SearchOptions(name: "*")
+        session.start()
+        session.stop()
+        #expect(!session.running)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(session.hits.isEmpty)
+    }
+
+    @Test func queryQuotesScopeAndLeavesTextOut() {
+        let o = SearchOptions(name: "*.md", text: #"say "hi" \o/"#)
+        #expect(CardinalIndex.query(o, scope: "/a/my \"dir\"", indexRoot: "/a") == #"in:"/a/my \"dir\"" *.md"#)
+        #expect(CardinalIndex.query(SearchOptions(name: "x"), scope: "/a", indexRoot: "/a") == "x")
+    }
+}
+
+@MainActor
+@Suite struct SearchSessionTests {
+    init() { SearchIndex.broadRoot = nil }
+
+    @Test func broadSearchStopsAtTheCap() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for i in 0..<(SearchSession.maxHits + 100) {
+            FileManager.default.createFile(atPath: root.appendingPathComponent("f\(i).txt").path, contents: nil)
+        }
+        let session = SearchSession(root: root)
+        session.options.name = "*.txt"
+        // The shared index may have been walking while the files were created (another test
+        // started it); FSEvents bring it up to date within a moment.
+        for _ in 0..<50 where !session.truncated {
+            session.start()
+            for _ in 0..<400 where session.running { try await Task.sleep(for: .milliseconds(25)) }
+            if !session.truncated { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        #expect(!session.running)
+        #expect(session.hits.count == SearchSession.maxHits)
+        #expect(session.truncated)
     }
 }
 
 // MARK: - SFTP
 
 @Suite struct SFTPParseTests {
+    @Test func refusesUnsafeBatchInput() {
+        SFTPClient.register(SFTPServer(host: "-oProxyCommand=x"))
+        #expect(throws: SFTPClient.SFTPError.self) { try SFTPClient.batch("-oProxyCommand=x", ["pwd"]) }
+        SFTPClient.register(SFTPServer(host: "example.invalid"))
+        let ref = SFTPRef(target: "example.invalid", path: "/a\n!touch /tmp/x")
+        #expect(throws: SFTPClient.SFTPError.self) { try SFTPClient.makeFolder(ref) }
+    }
+
     @Test func parsesLongListing() {
         let now = DateComponents(calendar: .current, year: 2026, month: 10, day: 14).date!
         let text = """
@@ -1098,6 +1247,14 @@ private func loaded(_ column: Column) async {
 
 @MainActor
 @Suite struct TerminalTests {
+    @Test func controlCharactersAreNeverTyped() {
+        #expect(TerminalController.isSafeToType("/Users/me/Projects/sub dir/ünï ✓"))
+        #expect(!TerminalController.isSafeToType("/tmp/evil\u{03}touch x\r"))
+        #expect(!TerminalController.isSafeToType("/tmp/a\nb"))
+        #expect(!TerminalController.isSafeToType("/tmp/esc\u{1B}[A"))
+        #expect(!TerminalController.isSafeToType("/tmp/c1\u{9B}x"))
+    }
+
     @Test func shellReportsDirectoryAndFollowsCd() async throws {
         let root = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: root) }

@@ -304,7 +304,12 @@ enum ZipArchive {
         let parent = first.deletingLastPathComponent()
         if urls.count == 1 {
             let dest = FileOps.uniqueURL(parent.appendingPathComponent(first.lastPathComponent + ".zip"))
-            try run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", first.path, dest.path])
+            // --keepParent stores a folder under its own name; for a single file it would add the
+            // enclosing folder too ("left/a.txt"), so a file goes in on its own, like Finder.
+            var isDir: ObjCBool = false
+            FileManager.default.fileExists(atPath: first.path, isDirectory: &isDir)
+            try run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc"] + (isDir.boolValue ? ["--keepParent"] : [])
+                    + [first.path, dest.path])
             return dest
         }
         let dest = FileOps.uniqueURL(parent.appendingPathComponent("Archive.zip"))

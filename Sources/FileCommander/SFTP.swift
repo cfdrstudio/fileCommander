@@ -61,6 +61,13 @@ enum SFTPClient {
     @discardableResult
     static func batch(_ target: String, _ commands: [String]) throws -> String {
         guard let s = server(target) else { throw SFTPError(message: "Not connected to \(target).") }
+        // A destination starting with "-" would be read by sftp as an option.
+        let destination = (s.user.isEmpty ? "" : s.user + "@") + s.host
+        guard !destination.hasPrefix("-") else { throw SFTPError(message: "“\(destination)” isn't a valid server address.") }
+        // Batch commands are one per line; a line break inside a quoted name would split it.
+        if commands.contains(where: { $0.contains(where: \.isNewline) }) {
+            throw SFTPError(message: "Names containing line breaks can't be transferred over SFTP.")
+        }
         let control = FileManager.default.temporaryDirectory.appendingPathComponent("oc-ssh-%C").path
         var args = ["-b", "-", "-q",
                     "-oBatchMode=yes", "-oConnectTimeout=10",
@@ -68,7 +75,7 @@ enum SFTPClient {
         if let port = s.port { args += ["-P", String(port)] }
         if !s.identityFile.isEmpty { args += ["-i", (s.identityFile as NSString).expandingTildeInPath] }
         for o in s.extraOptions { args += ["-o", o] }
-        args.append((s.user.isEmpty ? "" : s.user + "@") + s.host)
+        args.append(destination)
 
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/sftp")

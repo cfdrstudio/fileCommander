@@ -4,10 +4,13 @@ import SwiftUI
 struct JobsButton: View {
     let center: JobCenter
     @State private var showing = false
+    /// Opened by a transfer rather than by the user: closes again once everything finishes.
+    @State private var autoOpened = false
 
     var body: some View {
         Button {
             showing.toggle()
+            autoOpened = false
         } label: {
             if center.activeJobs.isEmpty {
                 Label("Transfers", systemImage: "arrow.up.arrow.down.circle")
@@ -27,7 +30,21 @@ struct JobsButton: View {
             JobsList(center: center)
         }
         .onChange(of: center.activeJobs.count) { old, new in
-            if new > old { showing = true }    // surface new transfers
+            if new > old {
+                // Surface only transfers that take a while; quick ones just flash the ring.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1))
+                    if !center.activeJobs.isEmpty && !showing {
+                        showing = true
+                        autoOpened = true
+                    }
+                }
+            } else if new == 0 && autoOpened {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if center.activeJobs.isEmpty && autoOpened { showing = false; autoOpened = false }
+                }
+            }
         }
     }
 }
